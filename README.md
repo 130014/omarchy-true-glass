@@ -1,5 +1,7 @@
 # True Glass for Omarchy
 
+> **Compatibility fork:** [130014/omarchy-true-glass](https://github.com/130014/omarchy-true-glass), based on [Eddie175's original](https://github.com/Eddie175/omarchy-true-glass). Development version 1.0.4 fixes bar-background handling for Omarchy 4.5 while retaining legacy two-state shell support. Automated tests do not replace live compositor testing; see [maintenance and validation notes](MAINTENANCE.md) before installing. All original credits and licenses are retained.
+
 Real glass for your [Omarchy](https://omarchy.org) desktop. The bar, menus, notifications and windows become clear panes that bend what is behind them at their edges, split light into colour along the rim and catch a light from above. Menus flow out of the bar like liquid, and back into it. It works with any theme.
 
 True Glass is built on [hyprglass](https://github.com/hyprnux/hyprglass) by Jeremy Trufier, the Hyprland plugin that renders the glass. True Glass adds the Omarchy side on top: glass shaped to each menu, the liquid motion, auto frost, the tints, the safety checks and a one-switch setup. Thank you, Jeremy, for making it open source.
@@ -21,11 +23,13 @@ True Glass is built on [hyprglass](https://github.com/hyprnux/hyprglass) by Jere
 
 ## Install
 
-From Omarchy's plugin marketplace, or:
+To install this development fork (not the upstream marketplace version):
 
 ```bash
-omarchy plugin add https://github.com/Eddie175/omarchy-true-glass --enable
+omarchy plugin add https://github.com/130014/omarchy-true-glass --enable
 ```
+
+This fork keeps the original plugin ID and settings paths. It is a replacement, not a second plugin to enable alongside the original. If upstream is already installed, turn Glass off first and follow the [migration notes](MAINTENANCE.md#migrating-from-upstream).
 
 Then open the **True Glass** icon in the bar and flip the switch at the top of its menu. The first time, True Glass builds its engine for your Hyprland: about a minute, a few on an older computer. It builds at low priority, so you can keep working.
 
@@ -41,7 +45,7 @@ Turn it off with the same switch, or remove it completely with **Delete True Gla
 omarchy plugin remove io.github.eddie175.true-glass
 ```
 
-Either way True Glass first puts back everything it changed: it unloads its engine, makes your bar opaque again if it made it transparent, gives your theme its outlines back, takes its one line back out of your terminal configs and selects your previous lock screen design again. Nothing else on your system is touched, and nothing is left behind.
+Either way True Glass first puts back everything it changed: it unloads its engine, restores your previous bar background if it made it transparent (unless you chose another background in the meantime), gives your theme its outlines back, takes its one line back out of your terminal configs and selects your previous lock screen design again. Nothing else on your system is touched, and nothing is left behind.
 
 ## What you get
 
@@ -114,7 +118,7 @@ While True Glass is on:
 |---|---|---|
 | The glass engine, loaded into Hyprland | built in `~/.local/share/omarchy-glass/` | unloaded; deleted with the plugin |
 | Its settings | `~/.local/state/omarchy-glass/` | kept; deleted with the plugin |
-| The bar made transparent, if it wasn't | Omarchy's own setting | set back |
+| The bar made transparent, if it wasn't | Omarchy's own setting | previous opaque/glassy background restored, unless you changed it yourself |
 | No outlines round menus, tooltips and notifications, and no full-screen dim behind the menu, launcher and password prompts | a marked block in `~/.config/omarchy/shell.toml` | removed |
 | Round corners (only if you turn it on) | Hyprland's corner rounding, at runtime | your theme's corners back |
 | One line per terminal config (Clear terminals only) | `~/.config/ghostty/config`, `kitty/kitty.conf`, `foot/foot.ini`, `alacritty/alacritty.toml` | removed |

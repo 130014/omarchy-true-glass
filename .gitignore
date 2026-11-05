@@ -1,2 +1,5 @@
 *.o
 *.so
+.build/
+.test-bar-*/
+__pycache__/

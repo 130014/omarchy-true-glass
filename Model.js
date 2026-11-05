@@ -117,6 +117,8 @@ function statusText(status) {
   if (s.indexOf("unsupported") === 0) return "True Glass needs Hyprland 0.56. This system has " + s.split(" ")[1] + ", so the glass stays off until True Glass is updated for it."
   if (s.indexOf("tools") === 0) return "Building the engine needs: " + s.slice(6) + ". Install the base-devel package group, then turn True Glass on again."
   if (s.indexOf("failed") === 0) return "The glass engine didn't build or load. Details: " + (s.slice(7) || "~/.local/share/omarchy-glass/build.log")
+  if (s === "bar") return "True Glass couldn't read or change the bar background, so it turned itself off. Check that the Omarchy shell is running, then try again."
+  if (s === "bar-restore") return "True Glass couldn't restore the bar background. Its saved background has been kept for another cleanup attempt. Check that the Omarchy shell is running, then turn Glass on and off to retry."
   if (s === "relogin") return "Hyprland was updated. Log out and back in, and True Glass builds its engine for the new version."
   if (s.indexOf("crashed") === 0) return "Hyprland crashed while True Glass was on, so True Glass stayed off this time. Turn it on to try again, or turn on Low power first. Crash report: " + s.slice(8)
   if (s === "gpu old") return "This computer's graphics are older than True Glass supports (Intel from before 2015, or an open-source NVIDIA or older AMD driver), so it stays off: on graphics like these the glass can hang the GPU, and Hyprland closes when it does. You can try anyway, in Low power."

@@ -16,10 +16,10 @@
 #
 # The state for the menu is written to ~/.local/state/omarchy-glass/status:
 #   off | building | on | unsupported HYPRLAND | tools WHAT | failed LOG | restart | relogin
-#   | crashed REPORT | gpu software | gpu old | gpu shaders RENDERER
+#   | crashed REPORT | gpu software | gpu old | gpu shaders RENDERER | bar | bar-restore
 set -uo pipefail
 
-DIR=${GLASS_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
+DIR=${GLASS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 # (settings and state outside the plugin's folder: the shell reloads every plugin
 # when a file inside one changes, so a setting written there reloaded them all)
 STATE=${GLASS_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-glass}
@@ -169,15 +169,69 @@ unload() {
 }
 
 # ── the bar: transparent while Glass is on (Omarchy's own setting) ──────────────
+# New shells have three backgrounds. Their old toggle now *cycles*, so never use
+# it there, even if shell.json still contains the legacy transparent boolean.
+bar_read() {
+  local config
+  # Consume the whole help stream: grep -q can SIGPIPE the CLI under pipefail
+  # and incorrectly select the legacy path even when background is supported.
+  if omarchy bar --help 2>/dev/null | grep -w background >/dev/null; then
+    BAR_API=background
+    BAR_BACKGROUND=$(omarchy bar background 2>/dev/null) || return 1
+    case $BAR_BACKGROUND in opaque | glassy | none) return 0 ;; *) return 1 ;; esac
+  fi
+  BAR_API=transparent
+  config=$(omarchy-shell shell listShellConfig 2>/dev/null) || return 1
+  BAR_BACKGROUND=$(jq -er '
+    .bar | if has("background") then empty
+    elif .transparent == true then "none"
+    elif .transparent == false then "opaque"
+    else empty end' <<< "$config")
+}
+
+bar_set_background() {
+  case $1 in opaque | glassy | none) ;; *) return 1 ;; esac
+  [[ $BAR_BACKGROUND == "$1" ]] && return 0
+  if [[ $BAR_API == background ]]; then
+    omarchy bar background "$1" >/dev/null 2>&1
+  else
+    # Only a confirmed two-state shell may use the old IPC toggle.
+    [[ $1 != glassy ]] || return 1
+    [[ $(omarchy-shell shell toggleBarTransparency 2>/dev/null) == ok ]]
+  fi
+}
+
+bar_migrate_state() {
+  # 1.0.3 only remembered that it had changed an opaque bar to transparent.
+  if [[ -f $STATE/bar-made-transparent && ! -f $STATE/bar-background-before ]]; then
+    printf '%s\n' opaque > "$STATE/bar-background-before.new" &&
+      mv -f "$STATE/bar-background-before.new" "$STATE/bar-background-before" || return 1
+  fi
+}
+
 bar_on() {
-  [[ $(omarchy-shell shell listShellConfig 2>/dev/null | jq -r '.bar.transparent // false') == true ]] && return
-  omarchy-shell shell toggleBarTransparency >/dev/null 2>&1 && touch "$STATE/bar-made-transparent"
+  bar_read || return 1
+  bar_migrate_state || return 1
+  [[ $BAR_BACKGROUND == none ]] && return 0
+  # Record intent before changing anything; keep it if a write fails so stop can
+  # recover. Repeated starts with an already clear bar must not replace it.
+  printf '%s\n' "$BAR_BACKGROUND" > "$STATE/bar-background-before.new" &&
+    mv -f "$STATE/bar-background-before.new" "$STATE/bar-background-before" || return 1
+  bar_set_background none
 }
 bar_off() {
-  [[ -f $STATE/bar-made-transparent ]] || return 0
-  [[ $(omarchy-shell shell listShellConfig 2>/dev/null | jq -r '.bar.transparent // false') == true ]] &&
-    omarchy-shell shell toggleBarTransparency >/dev/null 2>&1
-  rm -f "$STATE/bar-made-transparent"
+  [[ -f $STATE/bar-background-before || -f $STATE/bar-made-transparent ]] || return 0
+  bar_read || return 1
+  bar_migrate_state || return 1
+  local before
+  before=$(<"$STATE/bar-background-before")
+  case $before in opaque | glassy) ;; *) return 1 ;; esac
+  # A user who picked another background while Glass was on keeps that choice.
+  # On read/write failure, retain the saved setting so cleanup can be retried.
+  if [[ $BAR_BACKGROUND == none ]]; then
+    bar_set_background "$before" || return 1
+  fi
+  rm -f "$STATE/bar-background-before" "$STATE/bar-made-transparent"
 }
 
 # ── the shell's outlines and dim layers: off while Glass is on ──────────────────
@@ -446,7 +500,7 @@ start() {
     [[ $s == failed ]] && status "gpu shaders ${renderer:-unknown}" || status "gpu software"
     return 1
   fi
-  bar_on
+  bar_on || { stop; status bar; return 1; }
   outlines_on
   [[ $(setting clear_terminals false) == true ]] && terminals_on || terminals_off
   [[ $(setting lock false) == true ]] && lock_on || lock_off
@@ -454,15 +508,23 @@ start() {
 }
 
 stop() {
+  local bar_failed=false
   unload
-  bar_off
+  bar_off || bar_failed=true
   outlines_off
   terminals_off
   lock_off
   # (drops the rules Glass added at runtime: Hyprland reads its own config again)
   hyprctl reload >/dev/null 2>&1
+  if [[ $bar_failed == true ]]; then
+    status bar-restore
+    return 1
+  fi
   status off
 }
+
+# Sourcing defines helpers for isolated tests without dispatching or mirroring.
+[[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 
 trap mirror EXIT
 
