@@ -5,7 +5,10 @@
 #include "GlassRenderer.hpp"
 #include "Globals.hpp"
 #include "LayerGeometry.hpp"
+#include "ExclusiveBarGeometry.hpp"
 #include "ShapeField.hpp"
+#include <hyprland/src/protocols/LayerShell.hpp>
+#include <hyprland/protocols/wlr-layer-shell-unstable-v1.hpp>
 #include "WorkspaceAnimation.hpp"
 
 #include <hyprland/src/config/ConfigManager.hpp>
@@ -36,6 +39,22 @@ static CBox transformedLayerBox(CBox pixelBox, PHLMONITOR monitor) {
     const auto transform = Math::wlTransformToHyprutils(Math::invertTransform(monitor->m_transform));
     pixelBox.transform(transform, monitor->m_transformedSize.x, monitor->m_transformedSize.y).noNegativeSize().round();
     return pixelBox;
+}
+
+static std::optional<CBox> exclusiveBarBox(PHLLS layer, const CBox& logical) {
+    if (!layer || !layer->m_layerSurface)
+        return std::nullopt;
+    const auto resource = layer->m_layerSurface.lock();
+    if (!resource)
+        return std::nullopt;
+    const auto& state = resource->m_current;
+    const auto clipped = ExclusiveBarGeometry::reservedRect(
+        {logical.x, logical.y, logical.w, logical.h}, state.exclusive, state.anchor, state.exclusiveEdge,
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP, ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
+        ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM, ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+    if (!clipped)
+        return std::nullopt;
+    return CBox{clipped->x, clipped->y, clipped->w, clipped->h};
 }
 
 CGlassLayerSurface::CGlassLayerSurface(PHLLS layerSurface, bool popups)
@@ -565,7 +584,7 @@ void CGlassLayerSurface::startOpen(PHLMONITOR monitor, const CBox& transformBox,
     m_ghostHold.reset();
 }
 
-void CGlassLayerSurface::offerItemSpan(const PHLLS& bar, const CBox& barBox, const SP<Render::IFramebuffer>& barFb, const SP<Render::IFramebuffer>& target) {
+void CGlassLayerSurface::offerItemSpan(const PHLLS& bar, PHLMONITOR monitor, const CBox& barBox, const SP<Render::IFramebuffer>& barFb, const SP<Render::IFramebuffer>& target) {
     if (!m_spanWant || m_barLayer.lock() != bar)
         return;
     if (++m_spanTries > 60) { // (no underline: a widget that draws none, or a plugin's own window; ~0.35 s)
@@ -577,19 +596,29 @@ void CGlassLayerSurface::offerItemSpan(const PHLLS& bar, const CBox& barBox, con
         return;
     const uint32_t rgb    = (static_cast<uint32_t>(key->second[0] * 255.0f + 0.5f) << 16) | (static_cast<uint32_t>(key->second[1] * 255.0f + 0.5f) << 8) |
                             static_cast<uint32_t>(key->second[2] * 255.0f + 0.5f);
-    const bool     alongX = m_nearSide <= 1;
+    CBox visibleBar = barBox;
+    if (const auto cfg = g_pGlobalState->layerNamespaceShapes.find(bar->m_namespace);
+        cfg != g_pGlobalState->layerNamespaceShapes.end() && cfg->second.exclusive) {
+        const auto logical = bar->logicalBox();
+        const auto reserved = logical ? exclusiveBarBox(bar, *logical) : std::nullopt;
+        if (!reserved || !monitor) return;
+        CBox pixels{reserved->x, reserved->y, reserved->w, reserved->h};
+        pixels.translate(-monitor->m_position).scale(monitor->m_scale).round().noNegativeSize();
+        visibleBar = transformedLayerBox(pixels, monitor);
+    }
+    const bool     alongX = visibleBar.w >= visibleBar.h;
     const double   anchor = alongX ? m_quadPos.x + m_openAnchorPx.x : m_quadPos.y + m_openAnchorPx.y;
     double         lo = 0.0, hi = 0.0;
-    // (only the strip along the bar's edge facing the card, where the underline is
-    // drawn: an icon in a colour near the accent, a blue gauge, read as the item)
-    CBox       strip = barBox;
-    const double thick = alongX ? barBox.h : barBox.w;          // (the bar's thickness, px: 26 logical)
+    // Read the underline within the actual reserved strip, not the fullscreen
+    // layer's transparent content frame.
+    CBox       strip = visibleBar;
+    const double thick = alongX ? visibleBar.h : visibleBar.w;          // (the bar's thickness, px: 26 logical)
     const double band  = std::max(6.0, thick * 0.21), reach = thick * 6.7;
     switch (m_nearSide) {
-        case 0: strip = {barBox.x, barBox.y + barBox.h - band, barBox.w, band}; break;
-        case 1: strip = {barBox.x, barBox.y, barBox.w, band}; break;
-        case 2: strip = {barBox.x + barBox.w - band, barBox.y, band, barBox.h}; break;
-        default: strip = {barBox.x, barBox.y, band, barBox.h}; break;
+        case 0: strip = {visibleBar.x, visibleBar.y + visibleBar.h - band, visibleBar.w, band}; break;
+        case 1: strip = {visibleBar.x, visibleBar.y, visibleBar.w, band}; break;
+        case 2: strip = {visibleBar.x + visibleBar.w - band, visibleBar.y, band, visibleBar.h}; break;
+        default: strip = {visibleBar.x, visibleBar.y, band, visibleBar.h}; break;
     }
     // (only around the click: the readback is synchronous)
     if (alongX) {
@@ -634,7 +663,18 @@ bool CGlassLayerSurface::barAnchor(PHLMONITOR monitor, const CBox& transformBox,
             const auto ls = state ? state->getLayerSurface() : nullptr;
             if (ls && ls != layerSurface && ls->m_mapped && ls->m_monitor.lock() == monitor &&
                 state->resolveMaskSource() == EMaskSource::SHAPE_BOX) {
-                barRaw      = LayerGeometry::computeLayerBox(ls, monitor);
+                barRaw = LayerGeometry::computeLayerBox(ls, monitor);
+                if (const auto shape = g_pGlobalState->layerNamespaceShapes.find(ls->m_namespace);
+                    shape != g_pGlobalState->layerNamespaceShapes.end() && shape->second.exclusive) {
+                    const auto logical = ls->logicalBox();
+                    const auto reserved = logical ? exclusiveBarBox(ls, *logical) : std::nullopt;
+                    if (reserved) {
+                        CBox pixels{reserved->x, reserved->y, reserved->w, reserved->h};
+                        pixels.translate(-monitor->m_position).scale(monitor->m_scale).round().noNegativeSize();
+                        barRaw = pixels;
+                    } else
+                        barRaw.reset(); // unknown edge/zone: do not infer a false bar
+                }
                 m_barLayer  = ls;
                 break;
             }
@@ -1206,8 +1246,15 @@ CGlassLayerSurface::EMaskSource CGlassLayerSurface::resolveMaskSource() const {
     const auto layerSurface = m_layerSurface.lock();
     if (m_popups)
         return layerSurface && g_pGlobalState->layerNamespacePopupRadius.contains(layerSurface->m_namespace) ? EMaskSource::SHAPE_BOX : EMaskSource::CONTOUR;
-    if (layerSurface && g_pGlobalState->layerNamespaceShapes.contains(layerSurface->m_namespace))
-        return EMaskSource::SHAPE_BOX;
+    if (layerSurface) {
+        const auto shape = g_pGlobalState->layerNamespaceShapes.find(layerSurface->m_namespace);
+        if (shape != g_pGlobalState->layerNamespaceShapes.end()) {
+            const auto logical = logicalBox();
+            if (shape->second.exclusive && (!logical || !exclusiveBarBox(layerSurface, *logical)))
+                return EMaskSource::NONE;
+            return EMaskSource::SHAPE_BOX;
+        }
+    }
     const auto wlSurface    = layerSurface ? layerSurface->wlSurface() : nullptr; // root surface only
     const bool hasEffect    = wlSurface && wlSurface->m_hasBackgroundEffect;
     const bool regionEmpty  = !wlSurface || wlSurface->m_blurRegion.empty();
@@ -1407,9 +1454,22 @@ void CGlassLayerSurface::markBackgroundDirty() {
 
 void CGlassLayerSurface::buildStyleStrip(PHLMONITOR monitor, const CBox& transformBox, const SP<Render::IFramebuffer>& callerFramebuffer) {
     const auto sample = m_sampleFramebuffer ? m_sampleFramebuffer->getTexture() : nullptr;
-    const bool across = transformBox.w >= transformBox.h;
+    CBox styleBox = transformBox;
+    const auto layer = m_layerSurface.lock();
+    if (layer) {
+        const auto cfg = g_pGlobalState->layerNamespaceShapes.find(layer->m_namespace);
+        const auto logical = logicalBox();
+        if (cfg != g_pGlobalState->layerNamespaceShapes.end() && cfg->second.exclusive && logical && monitor) {
+            if (const auto reserved = exclusiveBarBox(layer, *logical)) {
+                CBox pixels{reserved->x, reserved->y, reserved->w, reserved->h};
+                pixels.translate(-monitor->m_position).scale(monitor->m_scale).round().noNegativeSize();
+                styleBox = transformedLayerBox(pixels, monitor);
+            }
+        }
+    }
+    const bool across = styleBox.w >= styleBox.h;
     if (!sample ||
-        !ShapeField::buildStyleStrip(sample->m_texID, m_samplePaddingRatio, across, static_cast<int>(across ? transformBox.w : transformBox.h),
+        !ShapeField::buildStyleStrip(sample->m_texID, m_samplePaddingRatio, across, static_cast<int>(across ? styleBox.w : styleBox.h),
                                      192.0f * (monitor ? monitor->m_scale : 1.0f), m_styleStrip, callerFramebuffer))
         m_styleStrip.reset();
 }
@@ -2042,11 +2102,39 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha, EM
                 shape.radius = g_pGlobalState->layerNamespacePopupRadius.at(layerSurface->m_namespace);
             } else
                 shape = g_pGlobalState->layerNamespaceShapes.at(layerSurface->m_namespace);
-            const auto  logical = logicalBox();
-            if (logical && monitor) {
-                // inset in logical space, then the same pixel/transform path as the layer box
-                CBox inner{logical->x + shape.inset[3], logical->y + shape.inset[0],
-                           logical->w - shape.inset[1] - shape.inset[3], logical->h - shape.inset[0] - shape.inset[2]};
+            const auto logical = logicalBox();
+            std::optional<CBox> shapeBase = logical;
+            float insets[4];
+            std::copy(std::begin(shape.inset), std::end(shape.inset), insets);
+            if (shape.exclusive) {
+                shapeBase = logical ? exclusiveBarBox(layerSurface, *logical) : std::nullopt;
+                if (shapeBase && layerSurface->m_layerSurface) {
+                    const auto resource = layerSurface->m_layerSurface.lock();
+                    if (resource) {
+                        const auto& current = resource->m_current;
+                        const auto edge = ExclusiveBarGeometry::resolveEdge(current.anchor, current.exclusiveEdge,
+                            ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP, ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
+                            ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM, ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+                        if (edge)
+                            ExclusiveBarGeometry::orientInsets(insets, shape.inset, *edge,
+                                ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP, ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT,
+                                ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM, ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT);
+                    }
+                }
+            }
+            if (!shapeBase) {
+                // Metadata can disappear between mask selection and compositing.
+                // The default negative glassBoxSize sentinel means the WHOLE
+                // surface, so explicitly take the plain-surface shader path.
+                maskInfo.contentBox = CBox{0.0, 0.0, 0.0, 1.0};
+                break;
+            }
+            if (shapeBase && monitor) {
+                // Clip to the layer-shell reserved strip first, then apply the
+                // configured insets in logical space. The render/sample quad stays
+                // full-sized; only glassBoxOffset/Size are narrowed.
+                CBox inner{shapeBase->x + insets[3], shapeBase->y + insets[0],
+                           shapeBase->w - insets[1] - insets[3], shapeBase->h - insets[0] - insets[2]};
                 inner.translate(-monitor->m_position);
                 inner.scale(monitor->m_scale).round().noNegativeSize();
                 const CBox innerT = transformedLayerBox(inner, monitor);
@@ -2062,7 +2150,7 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha, EM
                     if (!m_popups) {
                         for (const auto& [raw, state] : g_pGlobalState->layerSurfaces)
                             if (state && state.get() != this)
-                                state->offerItemSpan(layerSurface, transformBox, m_surfaceTempFramebuffer, target);
+                                state->offerItemSpan(layerSurface, monitor, transformBox, m_surfaceTempFramebuffer, target);
                         for (const auto& [raw, state] : g_pGlobalState->layerSurfaces)
                             if (state && state.get() != this && state->mergeIntoBar(layerSurface, monitor, transformBox, maskInfo))
                                 break;
@@ -2104,8 +2192,23 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha, EM
     // buffer: on the rotated tall screen the bar's box runs down the buffer's left)
     // (the bar itself only: its popups, the tooltips, have no such line, and
     // mirroring their own fill drew a flipped copy of their text along an edge)
-    if (!m_popups && g_pGlobalState->layerNamespaceFillKeyTop.contains(layerSurface->m_namespace))
+    if (!m_popups && g_pGlobalState->layerNamespaceFillKeyTop.contains(layerSurface->m_namespace)) {
         maskInfo.fillKeyTop = transformBox.w >= transformBox.h ? (transformBox.y <= 1.0 ? 1 : 2) : (transformBox.x <= 1.0 ? 3 : 4);
+        if (const auto cfg = g_pGlobalState->layerNamespaceShapes.find(layerSurface->m_namespace);
+            cfg != g_pGlobalState->layerNamespaceShapes.end() && cfg->second.exclusive && layerSurface->m_layerSurface) {
+            const auto resource = layerSurface->m_layerSurface.lock();
+            if (resource) {
+                const auto logical = logicalBox();
+                const auto reserved = logical ? exclusiveBarBox(layerSurface, *logical) : std::nullopt;
+                if (reserved && monitor) {
+                    CBox pixels{reserved->x, reserved->y, reserved->w, reserved->h};
+                    pixels.translate(-monitor->m_position).scale(monitor->m_scale).round().noNegativeSize();
+                    const CBox strip = transformedLayerBox(pixels, monitor);
+                    maskInfo.fillKeyTop = strip.w >= strip.h ? (strip.y <= 1.0 ? 1 : 2) : (strip.x <= 1.0 ? 3 : 4);
+                }
+            }
+        }
+    }
 
     // A settled card's glass follows its content's visibility in the very frame
     // (presence.frag into a 1x1 texture), so a fade-out needs no detecting: the

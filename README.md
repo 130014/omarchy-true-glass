@@ -1,6 +1,6 @@
 # True Glass for Omarchy
 
-> **Compatibility fork:** [130014/omarchy-true-glass](https://github.com/130014/omarchy-true-glass), based on [Eddie175's original](https://github.com/Eddie175/omarchy-true-glass). Development version 1.0.4 fixes bar-background handling for Omarchy 4.5 while retaining legacy two-state shell support. Automated tests do not replace live compositor testing; see [maintenance and validation notes](MAINTENANCE.md) before installing. All original credits and licenses are retained.
+> **Compatibility fork:** [130014/omarchy-true-glass](https://github.com/130014/omarchy-true-glass), based on [Eddie175's original](https://github.com/Eddie175/omarchy-true-glass). Development version 1.0.5 fixes bar-background handling and confines bar glass to its reserved screen-edge strip on Omarchy 4.5, including its newer full-screen bar surfaces. Legacy two-state shell support is retained. Automated tests do not replace live compositor testing; see [maintenance and validation notes](MAINTENANCE.md) before installing. All original credits and licenses are retained.
 
 Real glass for your [Omarchy](https://omarchy.org) desktop. The bar, menus, notifications and windows become clear panes that bend what is behind them at their edges, split light into colour along the rim and catch a light from above. Menus flow out of the bar like liquid, and back into it. It works with any theme.
 

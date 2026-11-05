@@ -43,6 +43,7 @@ enum class ELayerMaskMode { AUTO, ALPHA, REGION, CONTOUR };
 struct SLayerShape {
     float inset[4] = {0, 0, 0, 0}; // logical px: top, right, bottom, left
     float radius   = -1.0f;        // logical px, -1 = capsule (half the short side)
+    bool  exclusive = false;      // clip base shape to layer-shell's reserved edge/zone
 };
 
 // Parses "auto"/"alpha"/"region"/"contour"; nullopt for anything else.

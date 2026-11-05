@@ -87,9 +87,9 @@ struct SGlobalState {
     std::unordered_map<std::string, bool> layerNamespaceLiveResample;
     // Per-namespace mask mode override (namespace → mode)
     std::unordered_map<std::string, ELayerMaskMode> layerNamespaceMaskModes;
-    // Per-namespace glass shape inside the layer box: inset (logical px, top
-    // right bottom left) and corner radius (-1 = capsule). Glass covers the
-    // whole shape whatever the surface draws, e.g. a floating capsule bar.
+    // Per-namespace glass shape: inset (logical px, top/right/bottom/left),
+    // corner radius (-1 = capsule), and optional layer-shell exclusive-edge
+    // clipping before insets. Glass covers the whole shape whatever the surface draws.
     std::unordered_map<std::string, SLayerShape> layerNamespaceShapes;
     // Namespaces whose popups get glass too
     std::unordered_set<std::string> layerNamespacePopups;

@@ -111,7 +111,7 @@ class CGlassLayerSurface {
     std::chrono::steady_clock::time_point m_syncMeasureAt{}; // the last same-frame measurement
     int m_syncBurst = 0;
     // the bar this card came out of draws now: read the clicked item's extent from it
-    void offerItemSpan(const PHLLS& bar, const CBox& barBox, const SP<Render::IFramebuffer>& barFb, const SP<Render::IFramebuffer>& target);
+    void offerItemSpan(const PHLLS& bar, PHLMONITOR monitor, const CBox& barBox, const SP<Render::IFramebuffer>& barFb, const SP<Render::IFramebuffer>& target);
     // gone without a close to run: let the layer go
     void dropHold() {
         if (!m_ghostLive)

@@ -964,6 +964,9 @@ static int handleLuaLayer(lua_State* L) {
             if (lua_isnumber(L, -1))
                 shape.radius = static_cast<float>(lua_tonumber(L, -1));
             lua_pop(L, 1);
+            lua_getfield(L, -1, "exclusive");
+            shape.exclusive = lua_isboolean(L, -1) && lua_toboolean(L, -1);
+            lua_pop(L, 1);
             entry.shape = shape;
         }
         lua_pop(L, 1);

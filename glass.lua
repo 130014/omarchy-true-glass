@@ -73,7 +73,7 @@ hg.config({ corner_miter = radius == 0 and 1 or 0 })
 hg.config({ light_ui = G.light_ui and 1 or 0 })
 
 hg.layer("omarchy-bar", {
-  preset = "glass-bar", shape = { inset = { -80, -80, 0, -80 }, radius = 0 },
+  preset = "glass-bar", shape = { inset = { -80, -80, 0, -80 }, radius = 0, exclusive = true },
   adaptive = true, popups = true, popup_preset = "glass-tip", popup_radius = radius, mask_threshold = 0.04,
   -- the open item's accent line is drawn along the bar's top edge, as the card
   -- flows out of the bar's bottom edge there
