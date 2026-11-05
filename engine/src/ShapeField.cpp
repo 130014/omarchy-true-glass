@@ -239,7 +239,7 @@ CContentProbe::~CContentProbe() {
 }
 
 bool buildStyleStrip(GLuint sampleTexture, const Vector2D& padding, bool across, int length, float halfWindowPx,
-                     SP<Render::IFramebuffer>& out, const SP<Render::IFramebuffer>& callerFramebuffer) {
+                     const CBox& styleUV, SP<Render::IFramebuffer>& out, const SP<Render::IFramebuffer>& callerFramebuffer) {
     auto& shaders = g_pGlobalState->shaderManager;
     if (!shaders.isInitialized() || length <= 0 || !callerFramebuffer || sampleTexture == 0)
         return false;
@@ -265,6 +265,7 @@ bool buildStyleStrip(GLuint sampleTexture, const Vector2D& padding, bool across,
     glUniform2f(shaders.barStyle.a, padding.x, padding.y);
     glUniform1f(shaders.barStyle.b, halfWindowPx / static_cast<float>(length));
     glUniform1f(shaders.barStyle.c, across ? 1.0f : 0.0f);
+    glUniform4f(shaders.barStyle.d, styleUV.x, styleUV.y, styleUV.w, styleUV.h);
     glBindVertexArray(shader->getUniformLocation(SHADER_SHADER_VAO));
     glBindFramebuffer(GL_FRAMEBUFFER, fbIdOf(out));
     glBindTexture(GL_TEXTURE_2D, sampleTexture);

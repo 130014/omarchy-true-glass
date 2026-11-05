@@ -177,7 +177,7 @@ bool CShaderManager::compileShapeFieldShaders() {
            build(fieldResolve, "fieldresolve.frag", "maxDist", "maskUVOffset", "maskUVScale", "maskTex") &&
            build(fieldBlur, "fieldblur.frag", "stepPx", "sigma", "finish", nullptr) &&
            build(fieldBox, "fieldbox.frag", "maskUVOffset", "maskUVScale", "threshold", "cells") &&
-           build(barStyle, "barstyle.frag", "padding", "halfWindow", "across", nullptr) &&
+           build(barStyle, "barstyle.frag", "padding", "halfWindow", "across", "styleRect") &&
            build(presence, "presence.frag", "range", nullptr, nullptr, nullptr) &&
            build(hold, "hold.frag", "maskUVOffset", "maskUVScale", "presenceRef", "presenceTex") &&
            build(copy, "copy.frag", nullptr, nullptr, nullptr, nullptr);

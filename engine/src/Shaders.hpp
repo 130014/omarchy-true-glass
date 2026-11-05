@@ -1861,6 +1861,7 @@ uniform sampler2D tex;         // the layer's backdrop sample, padded
 uniform vec2 padding;          // its padding ratio
 uniform float halfWindow;      // half the window, in layer uv along the bar
 uniform float across;          // 1: the bar runs along x
+uniform vec4 styleRect;        // reserved bar strip in unpadded layer UVs
 
 in vec2 v_texcoord;
 layout(location = 0) out vec4 fragColor;
@@ -1875,6 +1876,7 @@ void main() {
         for (int j = 0; j < 3; j++) {
             float o  = 0.2 + 0.3 * float(j);
             vec2 luv = across > 0.5 ? vec2(t, o) : vec2(o, t);
+            luv = styleRect.xy + luv * styleRect.zw;
             acc += w * dot(texture(tex, luv * (1.0 - 2.0 * padding) + padding).rgb, vec3(0.2126, 0.7152, 0.0722));
         }
         wsum += 3.0 * w;

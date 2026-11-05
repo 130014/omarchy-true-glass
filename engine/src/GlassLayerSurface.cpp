@@ -1468,9 +1468,13 @@ void CGlassLayerSurface::buildStyleStrip(PHLMONITOR monitor, const CBox& transfo
         }
     }
     const bool across = styleBox.w >= styleBox.h;
-    if (!sample ||
+    const auto uv = ExclusiveBarGeometry::relativeUV(
+        {styleBox.x, styleBox.y, styleBox.w, styleBox.h},
+        {transformBox.x, transformBox.y, transformBox.w, transformBox.h});
+    if (!sample || !uv ||
         !ShapeField::buildStyleStrip(sample->m_texID, m_samplePaddingRatio, across, static_cast<int>(across ? styleBox.w : styleBox.h),
-                                     192.0f * (monitor ? monitor->m_scale : 1.0f), m_styleStrip, callerFramebuffer))
+                                     192.0f * (monitor ? monitor->m_scale : 1.0f),
+                                     CBox{uv->x, uv->y, uv->w, uv->h}, m_styleStrip, callerFramebuffer))
         m_styleStrip.reset();
 }
 

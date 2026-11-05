@@ -41,7 +41,7 @@ bool hold(GLuint maskTexture, const Vector2D& maskUVOffset, const Vector2D& mask
 // texel per 8 px of `length`, into `out` (RGBA8). Call after each resample.
 // Leaves `callerFramebuffer` bound with its viewport.
 bool buildStyleStrip(GLuint sampleTexture, const Vector2D& padding, bool across, int length, float halfWindowPx,
-                     SP<Render::IFramebuffer>& out, const SP<Render::IFramebuffer>& callerFramebuffer);
+                     const CBox& styleUV, SP<Render::IFramebuffer>& out, const SP<Render::IFramebuffer>& callerFramebuffer);
 
 // What CContentProbe measures: the bounding box (box-local px, y as the glass
 // shader's uv) of everything drawn in the mask over a width x height box, at CELL

@@ -51,6 +51,22 @@ int main() {
     assert(!ExclusiveBarGeometry::reservedRect({0, 0, 1536, 864}, 28, top | left | right, bottom,
                                                 top, right, bottom, left));
 
+    // Adaptive styling must sample the actual bar, not the screen's middle.
+    const Rect frame{0, 0, 1536, 864};
+    const auto topUV = ExclusiveBarGeometry::relativeUV(*fullTop, frame);
+    const auto bottomUV = ExclusiveBarGeometry::relativeUV(*fullBottom, frame);
+    const auto leftUV = ExclusiveBarGeometry::relativeUV(*fullLeft, frame);
+    const auto rightUV = ExclusiveBarGeometry::relativeUV(*fullRight, frame);
+    assert(topUV && same(*topUV, {0, 0, 1, 28.0 / 864}));
+    assert(bottomUV && same(*bottomUV, {0, 832.0 / 864, 1, 32.0 / 864}));
+    assert(leftUV && same(*leftUV, {0, 0, 30.0 / 1536, 1}));
+    assert(rightUV && same(*rightUV, {1506.0 / 1536, 0, 30.0 / 1536, 1}));
+    const auto oldUV = ExclusiveBarGeometry::relativeUV(*oldTop, *oldTop);
+    assert(oldUV && same(*oldUV, {0, 0, 1, 1}));
+    const auto shiftedUV = ExclusiveBarGeometry::relativeUV({12000, 0, 1920, 26}, {12000, 0, 1920, 1080});
+    assert(shiftedUV && same(*shiftedUV, {0, 0, 1, 26.0 / 1080}));
+    assert(!ExclusiveBarGeometry::relativeUV(*fullTop, {0, 0, 0, 864}));
+
     const float topInsets[4] = {-80, -80, 0, -80};
     float rightInsets[4];
     ExclusiveBarGeometry::orientInsets(rightInsets, topInsets, right, top, right, bottom, left);

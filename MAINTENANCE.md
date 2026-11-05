@@ -7,12 +7,13 @@ vendored rendering engine is based on Jeremy Trufier's hyprglass. Original MIT,
 BSD, and third-party notices remain in place. This is not an official Omarchy or
 Hyprland project.
 
-The first patch is intentionally narrow: correct bar-background handling without
-changing rendering, animation, terminal configuration, or lock-screen design.
+Version 1.0.4 corrects bar-background handling. Version 1.0.5 also fixes the
+rendered bar bounds for Omarchy's newer full-screen transparent bar surfaces:
+only the layer-shell reserved strip receives glass, not the whole desktop.
 
 ## Compatibility
 
-- Development version: **1.0.4**, based on upstream **1.0.3 / dda3708**.
+- Development version: **1.0.5**, based on upstream **1.0.3 / dda3708**.
 - Target system inspected: **Omarchy 4.5.0-2**, **Hyprland 0.56.2-4**
   (running compositor 0.56.2), **Quickshell 0.3.2.r7.g2b4501a-1**.
 - Current Omarchy: use the explicit `omarchy bar background none` setter, not
@@ -24,12 +25,20 @@ changing rendering, animation, terminal configuration, or lock-screen design.
   `bar.background` field. Unknown or unreadable configurations fail closed.
 - The engine remains restricted to **Hyprland 0.56.x**. A compatible version
   number alone is not a guarantee of plugin ABI compatibility.
-- The unchanged vendored engine compiled successfully against the installed
-  Hyprland 0.56.2 headers. One `HyprlandAPI::addConfigKeyword` deprecation warning
-  remains; the resulting library has not been loaded.
-- Live enable/disable, appearance, GPU behavior, and crash recovery have **not**
-  been validated for this fork yet. Do not interpret passing unit tests as that
-  validation.
+- The patched engine compiled and loaded successfully against the installed
+  Hyprland 0.56.2 headers on an NVIDIA RTX 3060 Ti. One
+  `HyprlandAPI::addConfigKeyword` deprecation warning remains.
+- Version 1.0.4 passed 19 live lifecycle checks: enable/disable, opaque/glassy/none
+  background restoration, preservation of a manual background change, and a shell
+  restart. The settings menu was inspected visually and config errors were empty.
+- Version 1.0.5 passed live pixel checks on the static wallpaper margin outside
+  windows and the bar. It exactly matched the Glass-disabled baseline with Dark
+  glass alone, Clear terminals alone, and both enabled. The old engine reduced
+  that margin's mean red channel from about 239 to 85 with Dark glass enabled.
+- Live tests are limited to this system. Crash recovery, other GPUs, floating-bar
+  plugins, and all lock-screen paths are not comprehensively validated. Geometry
+  regression tests cover all four edges and scaled dimensions, not live rotated
+  monitor behavior.
 
 ## Bar restoration
 
@@ -49,6 +58,16 @@ and reports a bar-background error instead of reporting success. Shutdown still
 finishes the remaining cleanup if bar restoration fails, but reports that failure
 and retains the saved background rather than silently reporting `off`.
 
+## Full-screen bar surfaces
+
+`shape.exclusive = true` opts a layer shape into native layer-shell clipping.
+The engine uses each surface's positive exclusive zone and its anchored edge to
+find the real strip in logical coordinates before applying the configured
+insets. Framebuffer/sample coordinates remain full-sized; only the glass bounds
+are restricted. Bar attachment and underline sampling use the reserved strip.
+Unknown zones/edges take the ordinary surface-rendering path instead of falling
+back to full-screen glass. Legacy strip-sized surfaces retain their bounds.
+
 ## Migrating from upstream
 
 The plugin ID remains `io.github.eddie175.true-glass`; both repositories must not
@@ -65,7 +84,7 @@ These are manual instructions, not actions performed by the automated tests.
 
 ## Automated checks
 
-Requires Bash, Python 3, jq, and Lua's `luac` for the syntax check:
+Requires Bash, Python 3, jq, a C++23 compiler (`c++`), and Lua's `luac`:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -76,10 +95,11 @@ omarchy plugin validate .
 git diff --check
 ```
 
-The 28 bar tests cover lifecycle restoration, write/read failures, legacy state,
-and help-stream SIGPIPE handling under `pipefail`. They source `bin/glass`
-without dispatching a command or installing its
-exit trap. Mock `omarchy` and `omarchy-shell` executables stand in for the desktop;
+The suite has 29 tests: 28 shell lifecycle tests plus a hermetic C++ geometry
+harness with fullscreen/legacy strip, edge, invalid-zone, and scaling cases.
+The shell tests cover restoration, write/read failures, legacy state, and
+help-stream SIGPIPE handling under `pipefail`. They source `bin/glass` without
+dispatching a command or installing its exit trap. Mock `omarchy` and `omarchy-shell` executables stand in for the desktop;
 all fixtures and state live in temporary directories inside this checkout.
 
 Build checks should copy `engine/` into `.build/engine/` and run `make` there

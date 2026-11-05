@@ -58,6 +58,14 @@ inline std::optional<Rect> reservedRect(Rect surface, int exclusive, unsigned an
     return surface;
 }
 
+// Map a framebuffer-space strip to the full layer's unpadded sample UVs.
+inline std::optional<Rect> relativeUV(Rect strip, Rect frame) {
+    if (frame.w <= 0 || frame.h <= 0 || strip.w <= 0 || strip.h <= 0)
+        return std::nullopt;
+    return Rect{(strip.x - frame.x) / frame.w, (strip.y - frame.y) / frame.h,
+                strip.w / frame.w, strip.h / frame.h};
+}
+
 // Rotate the top-bar inset convention with the reserved edge. Input order and
 // output order are top,right,bottom,left. The top-bar's zero inset is its
 // screen-inward edge; the three expanding (-80) sides rotate with it.
